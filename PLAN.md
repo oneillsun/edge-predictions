@@ -1,6 +1,6 @@
 ---
 title: Kalshi + Apify Trading Bot — Execution Plan
-status: draft, not yet started
+status: Milestone 0 complete
 last_updated: 2026-08-26
 source: claude/kalshi-apify-app-ideas.md (Market & betting predictions project)
 ---
@@ -80,13 +80,13 @@ kalshi-apify-bot/
 **Goal:** empty-but-runnable skeleton, no business logic yet.
 
 Tasks:
-- [ ] `git init`, `.gitignore` (Python, Node, `.env`, `__pycache__`, `node_modules`)
-- [ ] `backend/`: FastAPI app with a `/healthz` endpoint, `pyproject.toml` with
+- [x] `git init`, `.gitignore` (Python, Node, `.env`, `__pycache__`, `node_modules`)
+- [x] `backend/`: FastAPI app with a `/healthz` endpoint, `pyproject.toml` with
       fastapi, uvicorn, httpx, cryptography, apify-client, sqlalchemy,
       apscheduler, pydantic-settings, pytest
-- [ ] `frontend/`: Vite + React + TypeScript scaffold, one placeholder page
-- [ ] `.env.example` with every variable Milestones 1–7 will need (see below)
-- [ ] `README.md`: how to run backend and frontend locally
+- [x] `frontend/`: Vite + React + TypeScript scaffold, one placeholder page
+- [x] `.env.example` with every variable Milestones 1–7 will need (see below)
+- [x] `README.md`: how to run backend and frontend locally
 
 Acceptance check: `uvicorn app.main:app --reload` serves `/healthz` → 200;
 `npm run dev` in `frontend/` serves the placeholder page.

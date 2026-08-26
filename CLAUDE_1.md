@@ -22,10 +22,18 @@ these rules on every turn, not just when it's convenient.
 - Default every "does this place a real order" flag to `false`/off. Flipping
   one to `true` is a decision for the human, not something to change while
   implementing an unrelated milestone.
-- Through Milestone 7, all Kalshi API calls should target the demo/sandbox
-  environment, not production with real funds. Confirm which base URL/mode is
-  actually isolated before writing the client — don't assume the URL in
-  PLAN.md is current without checking docs.kalshi.com.
+- This project deliberately does not use a demo/sandbox environment — it
+  authenticates against the user's real Kalshi account and the production API
+  from Milestone 1 onward, including for market data. Because of that,
+  through Milestone 7 the Kalshi client must expose **only read-only (GET)
+  methods** (`get_markets`, `get_orderbook`, `get_positions`, etc.). Never
+  add, import, or call an order-placement/cancel/amend method
+  (`POST /portfolio/orders` or equivalent) anywhere in the code path before
+  Milestone 8 explicitly wires it in behind `LIVE_TRADING_ENABLED`. With no
+  sandbox to fall back on, this is the only thing standing between the
+  codebase and a real order — treat it as a hard boundary, not a convention.
+  If a task in an earlier milestone seems to need an order-placement call,
+  stop and flag it instead of adding one.
 - Position sizing and daily-loss caps (Milestone 4, Milestone 8) are enforced
   in code at the point of the decision/order, not only as config defaults.
 

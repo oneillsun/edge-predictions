@@ -35,10 +35,18 @@ not just "looks right."
   exact commands) — do this on kalshi.com before Milestone 1.
 - Apify account + API token (console.apify.com → Settings → Integrations).
 - Python 3.11+, Node 20+, git, VS Code, Claude Code CLI installed.
-- Confirm current Kalshi fee schedule and whether the demo/sandbox base URL
-  differs from production (`https://api.elections.kalshi.com/trade-api/v2`) —
-  check docs.kalshi.com directly before Milestone 1, since this plan was written
-  from third-party guides, not the primary docs, and fee/URL details move.
+- Confirm current Kalshi fee schedule on docs.kalshi.com directly before
+  Milestone 1, since this plan was written from third-party guides, not the
+  primary docs, and fee details move.
+- **Decision: no demo/sandbox.** This project authenticates against your real
+  Kalshi account and production API
+  (`https://api.elections.kalshi.com/trade-api/v2`) from Milestone 1 onward,
+  including for market data. Through Milestone 7, the codebase must only ever
+  call **read-only (GET) endpoints** — no order-placement, cancel, or amend
+  calls exist anywhere in the code path until Milestone 8 explicitly wires
+  them in behind `LIVE_TRADING_ENABLED`. Since there's no sandbox to fall back
+  on, this read-only constraint is the sole thing preventing a real order
+  before M8 — treat it as a hard boundary, not a convention (see CLAUDE_1.md).
 
 # Repo structure (target)
 
@@ -102,15 +110,17 @@ Tasks:
 - [ ] `app/kalshi_client.py`: RSA-PSS request signing (timestamp + method +
       path, SHA-256, PSS padding — verify this against docs.kalshi.com, not
       just this plan) with the three `KALSHI-ACCESS-*` headers
-- [ ] `get_markets()` with cursor pagination, `get_orderbook(ticker)`
-- [ ] Confirm and record whether Kalshi's demo/sandbox environment is a
-      separate base URL or a account-level "demo mode" — use whichever is
-      genuinely isolated from real money for all testing through Milestone 7
-- [ ] Unit tests mocking the signing function; one live smoke test (gated behind
-      an env flag) that hits `/markets` against demo/sandbox only
+- [ ] `get_markets()` with cursor pagination, `get_orderbook(ticker)` — GET
+      endpoints only; `kalshi_client.py` must not define or import any
+      order-placement/cancel/amend method until Milestone 8
+- [ ] Unit tests mocking the signing function; one live smoke test (gated
+      behind an env flag) that hits `/markets` against the live account —
+      this touches your real account but only via GET, so no funds are ever
+      at risk
 
 Acceptance check: a script prints 10 live markets with their current yes/no
-price, hitting demo/sandbox, no real funds touched.
+price, using your live Kalshi account credentials, no order ever submitted
+(nothing changes in your Kalshi balance/positions).
 
 # Milestone 2 — Persistence layer
 
@@ -154,8 +164,9 @@ Tasks:
 - [ ] `app/scheduler.py`: APScheduler job running both on an interval (start
       slow — every 15–30 min — tighten later if it proves useful)
 
-Acceptance check: after running for ~1 hour against demo/sandbox, the `signal`
-table has rows from both sources for at least one real market.
+Acceptance check: after running for ~1 hour against your live Kalshi account
+(read-only), the `signal` table has rows from both sources for at least one
+real market.
 
 # Milestone 4 — Decision engine (no execution yet)
 
@@ -180,13 +191,14 @@ edge, fee-adjusted edge, and sizing recommendation, for both "would trade" and
 
 # Milestone 5 — Paper trading loop
 
-**Goal:** the full loop runs unattended against demo/sandbox and produces a
-track record before anything touches real money.
+**Goal:** the full loop runs unattended against live Kalshi market data and
+produces a track record before anything touches real money.
 
 Tasks:
 - [ ] Decisions from Milestone 4 that clear the edge threshold get logged as
-      simulated `Trade` rows (entry price, size, timestamp) — no real order
-      placed yet, demo/sandbox only if you want a live-odds paper mode
+      simulated `Trade` rows (entry price, size, timestamp) against real-time
+      live prices — no order is ever submitted to Kalshi; the simulation
+      lives entirely in the `trade` table
 - [ ] A settlement checker: when a market resolves, mark paper trades
       win/loss and compute simulated P&L
 - [ ] Run for at least 1–2 weeks of wall-clock time before Milestone 8
@@ -207,8 +219,8 @@ Tasks:
 - [ ] State-eligibility indicator per market (flag sports contracts in
       restricted states — see kalshi-overview.md Legal Status section)
 
-Acceptance check: dashboard loads, shows live demo/sandbox markets sorted by
-edge, and paper-trade history from Milestone 5 renders correctly.
+Acceptance check: dashboard loads, shows live Kalshi markets sorted by edge,
+and paper-trade history from Milestone 5 renders correctly.
 
 # Milestone 7 — Alerting + approval queue
 

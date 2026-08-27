@@ -64,13 +64,20 @@ class KalshiClient:
         return response.json()
 
     def get_markets(
-        self, *, limit: int = 100, cursor: str | None = None, status: str | None = None
+        self,
+        *,
+        limit: int = 100,
+        cursor: str | None = None,
+        status: str | None = None,
+        series_ticker: str | None = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
         if status:
             params["status"] = status
+        if series_ticker:
+            params["series_ticker"] = series_ticker
         return self._get("/markets", params=params)
 
     def get_orderbook(self, ticker: str, *, depth: int | None = None) -> dict[str, Any]:

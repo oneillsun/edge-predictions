@@ -17,5 +17,10 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./app.db"
 
+    apify_api_token: str = ""
+    apify_news_actor_id: str = "apify/website-content-crawler"
+
+    polymarket_api_base_url: str = "https://gamma-api.polymarket.com"
+
 
 settings = Settings()

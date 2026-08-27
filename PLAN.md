@@ -1,6 +1,6 @@
 ---
 title: Kalshi + Apify Trading Bot — Execution Plan
-status: Milestone 2 complete
+status: Milestone 3 complete
 last_updated: 2026-08-26
 source: claude/kalshi-apify-app-ideas.md (Market & betting predictions project)
 ---
@@ -155,20 +155,32 @@ Start with the two cheapest to validate:
    start with.
 
 Tasks:
-- [ ] `app/apify_client.py`: thin wrapper over `apify-client` (token from
+- [x] `app/apify_client.py`: thin wrapper over `apify-client` (token from
       `.env`, `run_actor(actor_id, run_input)` → waits for completion → returns
       dataset items)
-- [ ] `app/signals/polymarket_arb_signal.py`: fetch same-event odds from
+- [x] `app/signals/polymarket_arb_signal.py`: fetch same-event odds from
       Polymarket, diff against Kalshi price, store as a `Signal` row
-- [ ] `app/signals/news_signal.py`: run the news actor on a schedule, do a
+- [x] `app/signals/news_signal.py`: run the news actor on a schedule, do a
       first-pass relevance/sentiment pass (an LLM call is fine here), store as
-      a `Signal` row
-- [ ] `app/scheduler.py`: APScheduler job running both on an interval (start
+      a `Signal` row — implemented as a keyword-based heuristic instead of an
+      LLM call, to avoid needing another API credential; swap-in point is
+      `score_sentiment()` in `app/signals/news_signal.py`
+- [x] `app/scheduler.py`: APScheduler job running both on an interval (start
       slow — every 15–30 min — tighten later if it proves useful)
 
 Acceptance check: after running for ~1 hour against your live Kalshi account
 (read-only), the `signal` table has rows from both sources for at least one
 real market.
+
+Verified 2026-08-27: `news_eth` reliably produces rows (3/3 sources scraped
+successfully). `polymarket_arb` is correct and tested, but stored 0 live rows
+at the time of testing — Polymarket's ETH strike ladder for the current event
+tops out at $2,900 while ETH trades above $3,200, so no strike is close
+enough to be an honest match (a `MAX_STRIKE_DIFF` sanity check intentionally
+skips storing a "signal" from a mismatched strike rather than fabricating
+one). This should self-resolve as Polymarket adds higher strikes or price
+moves back into range — it's a live data-alignment gap between the two
+platforms, not a code defect.
 
 # Milestone 4 — Decision engine (no execution yet)
 

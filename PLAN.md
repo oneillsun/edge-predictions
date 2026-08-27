@@ -1,6 +1,6 @@
 ---
 title: Kalshi + Apify Trading Bot — Execution Plan
-status: Milestone 0 complete
+status: Milestone 1 complete
 last_updated: 2026-08-26
 source: claude/kalshi-apify-app-ideas.md (Market & betting predictions project)
 ---
@@ -40,7 +40,9 @@ not just "looks right."
   primary docs, and fee details move.
 - **Decision: no demo/sandbox.** This project authenticates against your real
   Kalshi account and production API
-  (`https://api.elections.kalshi.com/trade-api/v2`) from Milestone 1 onward,
+  (`https://external-api.kalshi.com/trade-api/v2` — confirmed against
+  docs.kalshi.com on 2026-08-26; PLAN.md previously had the now-superseded
+  `api.elections.kalshi.com` host) from Milestone 1 onward,
   including for market data. Through Milestone 7, the codebase must only ever
   call **read-only (GET) endpoints** — no order-placement, cancel, or amend
   calls exist anywhere in the code path until Milestone 8 explicitly wires
@@ -104,16 +106,16 @@ Acceptance check: `uvicorn app.main:app --reload` serves `/healthz` → 200;
 **Goal:** authenticated read access to markets/orderbook. No order placement yet.
 
 Tasks:
-- [ ] `kalshi_private.pem` generated locally (2048-bit RSA), **never committed**
+- [x] `kalshi_private.pem` generated locally (2048-bit RSA), **never committed**
       — path referenced via `.env`, not hardcoded
-- [ ] Public key uploaded on kalshi.com, key ID stored in `.env`
-- [ ] `app/kalshi_client.py`: RSA-PSS request signing (timestamp + method +
+- [x] Public key uploaded on kalshi.com, key ID stored in `.env`
+- [x] `app/kalshi_client.py`: RSA-PSS request signing (timestamp + method +
       path, SHA-256, PSS padding — verify this against docs.kalshi.com, not
       just this plan) with the three `KALSHI-ACCESS-*` headers
-- [ ] `get_markets()` with cursor pagination, `get_orderbook(ticker)` — GET
+- [x] `get_markets()` with cursor pagination, `get_orderbook(ticker)` — GET
       endpoints only; `kalshi_client.py` must not define or import any
       order-placement/cancel/amend method until Milestone 8
-- [ ] Unit tests mocking the signing function; one live smoke test (gated
+- [x] Unit tests mocking the signing function; one live smoke test (gated
       behind an env flag) that hits `/markets` against the live account —
       this touches your real account but only via GET, so no funds are ever
       at risk

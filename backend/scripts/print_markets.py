@@ -3,6 +3,11 @@
 Read-only — uses KalshiClient.get_markets (GET only). Hits your real Kalshi
 account since this project uses no demo/sandbox, but no order is ever sent.
 Run from backend/: python scripts/print_markets.py
+
+Note: Kalshi's /markets has no server-side sort, and a large share of "open"
+markets are auto-generated multivariate-event shards with zero trading
+interest, so results may show low-activity markets. That's expected — this
+script only needs to prove read access works, not surface liquid markets.
 """
 
 from app.config import settings
@@ -12,7 +17,7 @@ from app.kalshi_client import build_client_from_settings
 def main() -> None:
     client = build_client_from_settings(settings)
     try:
-        response = client.get_markets(limit=10)
+        response = client.get_markets(limit=10, status="open")
     finally:
         client.close()
 

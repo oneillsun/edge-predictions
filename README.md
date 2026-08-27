@@ -16,6 +16,20 @@ uvicorn app.main:app --reload
 
 Serves `/healthz` at `http://localhost:8000/healthz`.
 
+Create the local database schema (SQLite by default, via `DATABASE_URL`):
+
+```
+cd backend
+alembic upgrade head
+```
+
+Run this after pulling changes that add new migrations. To generate a new
+migration after changing `app/db/models.py`:
+
+```
+alembic revision --autogenerate -m "describe the change"
+```
+
 Run tests:
 
 ```

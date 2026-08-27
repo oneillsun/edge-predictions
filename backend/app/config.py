@@ -15,5 +15,7 @@ class Settings(BaseSettings):
     kalshi_api_base_url: str = "https://external-api.kalshi.com"
     kalshi_live_test_enabled: bool = False
 
+    database_url: str = "sqlite:///./app.db"
+
 
 settings = Settings()

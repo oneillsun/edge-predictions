@@ -1,6 +1,6 @@
 ---
 title: Kalshi + Apify Trading Bot — Execution Plan
-status: Milestone 1 complete
+status: Milestone 2 complete
 last_updated: 2026-08-26
 source: claude/kalshi-apify-app-ideas.md (Market & betting predictions project)
 ---
@@ -130,13 +130,13 @@ price, using your live Kalshi account credentials, no order ever submitted
 milestones (backtest, journal) have data to work with from day one.
 
 Tasks:
-- [ ] `app/db/models.py`: `MarketSnapshot`, `Signal`, `Trade`, `Alert` tables
+- [x] `app/db/models.py`: `MarketSnapshot`, `Signal`, `Trade`, `Alert` tables
       (SQLite for local dev, swappable to Postgres via `DATABASE_URL`)
-- [ ] `MarketSnapshot` stores ticker, timestamp, yes/no price, volume
-- [ ] `Signal` stores source (which Apify actor/module), ticker, estimated
+- [x] `MarketSnapshot` stores ticker, timestamp, yes/no price, volume
+- [x] `Signal` stores source (which Apify actor/module), ticker, estimated
       probability, raw payload (JSON), timestamp — this is what makes the later
       trade journal ("why did we trade this") possible
-- [ ] Alembic migration setup
+- [x] Alembic migration setup
 
 Acceptance check: running the Milestone 1 market-fetch script also writes rows
 to `market_snapshot`; inspect with a `sqlite3` query.

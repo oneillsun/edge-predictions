@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -41,6 +41,27 @@ class Signal(Base):
     ticker: Mapped[str] = mapped_column(String, index=True)
     estimated_probability: Mapped[float] = mapped_column(Float)
     raw_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Decision(Base):
+    """A logged trade/no-trade evaluation of a Signal — the backtest data."""
+
+    __tablename__ = "decision"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String, index=True)
+    signal_id: Mapped[int | None] = mapped_column(ForeignKey("signal.id"), nullable=True)
+    estimated_probability: Mapped[float] = mapped_column(Float)
+    side: Mapped[str | None] = mapped_column(String, nullable=True)
+    kalshi_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee: Mapped[float | None] = mapped_column(Float, nullable=True)
+    raw_edge: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee_adjusted_edge: Mapped[float | None] = mapped_column(Float, nullable=True)
+    would_trade: Mapped[bool] = mapped_column(Boolean)
+    size_pct_of_bankroll: Mapped[float | None] = mapped_column(Float, nullable=True)
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSON)
     ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

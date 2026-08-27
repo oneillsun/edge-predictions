@@ -124,6 +124,8 @@ def run(kalshi_client: KalshiClient, polymarket_client: PolymarketClient, sessio
                         "strike": strike,
                         "yes_bid": market.get("yes_bid_dollars"),
                         "yes_ask": market.get("yes_ask_dollars"),
+                        "no_bid": market.get("no_bid_dollars"),
+                        "no_ask": market.get("no_ask_dollars"),
                         "close_time": market.get("close_time"),
                     },
                     "polymarket": {

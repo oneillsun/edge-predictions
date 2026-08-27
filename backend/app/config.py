@@ -22,5 +22,9 @@ class Settings(BaseSettings):
 
     polymarket_api_base_url: str = "https://gamma-api.polymarket.com"
 
+    edge_margin_threshold: float = 0.02
+    max_position_pct_of_bankroll: float = 0.03
+    kelly_fraction_cap: float = 0.5
+
 
 settings = Settings()

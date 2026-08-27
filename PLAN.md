@@ -1,6 +1,6 @@
 ---
 title: Kalshi + Apify Trading Bot — Execution Plan
-status: Milestone 3 complete
+status: Milestone 4 complete
 last_updated: 2026-08-26
 source: claude/kalshi-apify-app-ideas.md (Market & betting predictions project)
 ---
@@ -188,20 +188,40 @@ platforms, not a code defect.
 logged but not acted on.
 
 Tasks:
-- [ ] `app/engine/decision.py`: for each ticker with a recent signal, compare
+- [x] `app/engine/decision.py`: for each ticker with a recent signal, compare
       estimated probability vs. current Kalshi price; subtract Kalshi's fee
       (confirm the current fee formula on kalshi.com — historically fee scales
       with `price * (1 - price)`, peaking near $0.50, per kalshi-overview.md);
-      flag as an "edge" only if it clears fees by a configurable margin
-- [ ] `app/engine/sizing.py`: position sizing capped at 2–5% of paper bankroll
+      flag as an "edge" only if it clears fees by a configurable margin —
+      confirmed live via `GET /series/{ticker}`: fee = `ceil_to_cent(fee_multiplier
+      * 0.07 * price * (1-price))`, fee_multiplier queried per-series (not
+      assumed constant) since Kalshi can set it per series
+- [x] `app/engine/sizing.py`: position sizing capped at 2–5% of paper bankroll
       per trade (configurable), Kelly-fraction-capped like PolyEdge Bot's
-      approach — do not implement uncapped Kelly
-- [ ] Every decision (trade or no-trade) gets logged with its inputs — this is
-      the backtest data
+      approach — do not implement uncapped Kelly — `KELLY_FRACTION_CAP` (0.5,
+      half-Kelly) scales raw Kelly before `MAX_POSITION_PCT_OF_BANKROLL` hard-caps it
+- [x] Every decision (trade or no-trade) gets logged with its inputs — this is
+      the backtest data — new `Decision` table (Milestone 4 migration)
+
+Only `polymarket_arb` signals feed the engine — they carry a specific Kalshi
+ticker plus a price snapshot; `news_eth` signals are category-level (ticker =
+series) and aren't directly actionable by this first-pass engine.
 
 Acceptance check: decision log shows entries with signal inputs, computed
 edge, fee-adjusted edge, and sizing recommendation, for both "would trade" and
 "edge too small" cases.
+
+Verified 2026-08-27: ran `decision.run()` live (real `get_series` fee lookup,
+fee_multiplier=1.0 for KXETH). Since Milestone 3's `polymarket_arb` signal
+currently produces 0 live rows (Polymarket's strike ladder doesn't reach
+ETH's current price — see Milestone 3 note), the two required cases were
+demonstrated with two manually-inserted signals using **real live Kalshi
+prices** but a fabricated `estimated_probability`, clearly labeled
+`"demo": true` in the stored payload and removed after verification. Both
+produced correct `Decision` rows (one `would_trade=true` sized to the 3%
+hard cap, one `would_trade=false` with `size_pct_of_bankroll=null`). Full
+unit test coverage in `tests/test_decision.py` exercises both branches
+deterministically without relying on demo data.
 
 # Milestone 5 — Paper trading loop
 

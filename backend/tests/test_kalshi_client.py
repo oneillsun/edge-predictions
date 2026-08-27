@@ -75,6 +75,26 @@ def test_get_orderbook_builds_ticker_path(private_key: rsa.RSAPrivateKey) -> Non
     assert call["params"] == {"depth": 10}
 
 
+def test_get_market_builds_ticker_path(private_key: rsa.RSAPrivateKey) -> None:
+    client, fake_http = make_client(private_key, {"market": {"status": "finalized", "result": "yes"}})
+
+    result = client.get_market("KXETH-26AUG2717-T3209.99")
+
+    assert result == {"market": {"status": "finalized", "result": "yes"}}
+    call = fake_http.calls[0]
+    assert call["url"] == "https://external-api.kalshi.com/trade-api/v2/markets/KXETH-26AUG2717-T3209.99"
+
+
+def test_get_series_builds_series_path(private_key: rsa.RSAPrivateKey) -> None:
+    client, fake_http = make_client(private_key, {"series": {"fee_multiplier": 1, "fee_type": "quadratic"}})
+
+    result = client.get_series("KXETH")
+
+    assert result == {"series": {"fee_multiplier": 1, "fee_type": "quadratic"}}
+    call = fake_http.calls[0]
+    assert call["url"] == "https://external-api.kalshi.com/trade-api/v2/series/KXETH"
+
+
 def test_no_order_placement_methods_exist() -> None:
     """Hard safety boundary: no order-placement method may exist before Milestone 8."""
     forbidden = {

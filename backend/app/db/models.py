@@ -74,9 +74,11 @@ class Trade(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     ticker: Mapped[str] = mapped_column(String, index=True)
     source: Mapped[str | None] = mapped_column(String, nullable=True)
+    decision_id: Mapped[int | None] = mapped_column(ForeignKey("decision.id"), nullable=True)
     side: Mapped[str] = mapped_column(String)
     entry_price: Mapped[float] = mapped_column(Float)
-    size: Mapped[float] = mapped_column(Float)
+    size: Mapped[float] = mapped_column(Float)  # number of contracts
+    fee: Mapped[float] = mapped_column(Float, default=0.0)  # total fee paid to open (per-contract fee * size)
     status: Mapped[str] = mapped_column(String, default="open")
     result: Mapped[str | None] = mapped_column(String, nullable=True)
     pnl: Mapped[float | None] = mapped_column(Float, nullable=True)

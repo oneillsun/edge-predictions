@@ -26,5 +26,7 @@ class Settings(BaseSettings):
     max_position_pct_of_bankroll: float = 0.03
     kelly_fraction_cap: float = 0.5
 
+    paper_bankroll_usd: float = 1000.0
+
 
 settings = Settings()

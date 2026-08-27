@@ -1,0 +1,43 @@
+"""Milestone 5 acceptance check: paper-trade count, win rate, and P&L by signal source.
+
+Run from backend/: python scripts/paper_trading_report.py
+"""
+
+from collections import defaultdict
+
+from app.db.models import Trade
+from app.db.session import SessionLocal
+
+
+def main() -> None:
+    session = SessionLocal()
+    try:
+        trades = session.query(Trade).all()
+    finally:
+        session.close()
+
+    by_source: dict[str, list[Trade]] = defaultdict(list)
+    for trade in trades:
+        by_source[trade.source or "unknown"].append(trade)
+
+    print(f"Total paper trades: {len(trades)}\n")
+
+    if not trades:
+        print("No paper trades yet.")
+        return
+
+    header = f"{'source':<20} {'count':>6} {'settled':>8} {'win_rate':>9} {'total_pnl':>11}"
+    print(header)
+    print("-" * len(header))
+
+    for source, source_trades in sorted(by_source.items()):
+        settled = [t for t in source_trades if t.status == "settled"]
+        wins = [t for t in settled if t.result == "win"]
+        win_rate = (len(wins) / len(settled) * 100) if settled else float("nan")
+        total_pnl = sum(t.pnl or 0.0 for t in settled)
+        win_rate_str = f"{win_rate:.1f}%" if settled else "n/a"
+        print(f"{source:<20} {len(source_trades):>6} {len(settled):>8} {win_rate_str:>9} {total_pnl:>11.2f}")
+
+
+if __name__ == "__main__":
+    main()

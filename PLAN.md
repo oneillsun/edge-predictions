@@ -1,6 +1,6 @@
 ---
 title: Kalshi + Apify Trading Bot — Execution Plan
-status: Milestone 4 complete
+status: Milestone 5 implemented; paper-trading track record period not yet started
 last_updated: 2026-08-26
 source: claude/kalshi-apify-app-ideas.md (Market & betting predictions project)
 ---
@@ -229,17 +229,38 @@ deterministically without relying on demo data.
 produces a track record before anything touches real money.
 
 Tasks:
-- [ ] Decisions from Milestone 4 that clear the edge threshold get logged as
+- [x] Decisions from Milestone 4 that clear the edge threshold get logged as
       simulated `Trade` rows (entry price, size, timestamp) against real-time
       live prices — no order is ever submitted to Kalshi; the simulation
-      lives entirely in the `trade` table
-- [ ] A settlement checker: when a market resolves, mark paper trades
-      win/loss and compute simulated P&L
-- [ ] Run for at least 1–2 weeks of wall-clock time before Milestone 8
+      lives entirely in the `trade` table — `app/engine/paper_trading.py`,
+      `open_paper_trades()`; skips a ticker that already has an open trade so
+      a signal firing every cycle doesn't keep stacking positions
+- [x] A settlement checker: when a market resolves, mark paper trades
+      win/loss and compute simulated P&L — `settle_paper_trades()`, checks
+      `GET /markets/{ticker}` (read-only) and settles once `status` is
+      `determined`/`finalized` with a non-empty `result`
+- [ ] Run for at least 1–2 weeks of wall-clock time before Milestone 8 — **not
+      done yet, and can't be done inside a single coding session.** The
+      scheduler (`app/scheduler.py`) now runs the full pipeline —
+      signals → decisions → paper trades → settlement — every 20 minutes via
+      `uvicorn app.main:app`. Leave it running (or deploy it somewhere it can
+      run continuously) for 1–2 weeks before treating Milestone 8 as unblocked.
 
 Acceptance check: a report script prints paper-trade count, win rate, and P&L
 by signal source — this is what tells you whether news signals or arb signals
 are actually worth anything, per-source, not just in aggregate.
+
+Verified 2026-08-27: ran the full live pipeline once (real Kalshi, Polymarket,
+and Apify calls) — 0 decisions/trades, consistent with Milestone 3/4's
+finding that `polymarket_arb` currently has no close Polymarket match.
+Demonstrated `open_paper_trades`/`settle_paper_trades` against **two real
+already-finalized KXETH markets** (fetched live via `status=settled`) with
+manually-inserted entry prices — clearly a demo, not the live pipeline's own
+output, and removed after verification. `scripts/paper_trading_report.py`
+correctly showed 2 trades, 50% win rate, -$0.60 total P&L for
+`polymarket_arb`, matching hand-computed P&L exactly. Deterministic coverage
+of both open and settle logic (including the skip-if-already-open and
+unresolved-market cases) lives in `tests/test_paper_trading.py`.
 
 # Milestone 6 — Dashboard
 

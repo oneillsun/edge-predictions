@@ -89,6 +89,9 @@ class KalshiClient:
     def get_series(self, series_ticker: str) -> dict[str, Any]:
         return self._get(f"/series/{series_ticker}")
 
+    def get_market(self, ticker: str) -> dict[str, Any]:
+        return self._get(f"/markets/{ticker}")
+
     def close(self) -> None:
         self._http.close()
 

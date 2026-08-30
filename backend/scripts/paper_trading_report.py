@@ -20,11 +20,14 @@ def main() -> None:
     for trade in trades:
         by_source[trade.source or "unknown"].append(trade)
 
-    print(f"Total paper trades: {len(trades)}\n")
+    print(f"Total paper trades: {len(trades)}")
 
     if not trades:
         print("No paper trades yet.")
         return
+
+    earliest = min(trade.opened_at for trade in trades)
+    print(f"Since: {earliest.strftime('%m/%d/%Y %H:%M:%S')} UTC\n")
 
     header = f"{'source':<20} {'count':>6} {'settled':>8} {'win_rate':>9} {'total_pnl':>11}"
     print(header)

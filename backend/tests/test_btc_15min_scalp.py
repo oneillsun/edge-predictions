@@ -39,8 +39,20 @@ class FakeKalshiClient:
         return {"series": {"fee_multiplier": self._fee_multiplier, "fee_type": "quadratic"}}
 
 
-def window_market(ticker: str, yes_bid: str, yes_ask: str) -> dict[str, Any]:
-    return {"ticker": ticker, "yes_bid_dollars": yes_bid, "yes_ask_dollars": yes_ask}
+def window_market(
+    ticker: str,
+    yes_bid: str,
+    yes_ask: str,
+    floor_strike: float = 78000.0,
+    close_time: str = "2026-08-29T22:45:00Z",
+) -> dict[str, Any]:
+    return {
+        "ticker": ticker,
+        "yes_bid_dollars": yes_bid,
+        "yes_ask_dollars": yes_ask,
+        "floor_strike": floor_strike,
+        "close_time": close_time,
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -73,6 +85,21 @@ def test_opens_position_on_new_window() -> None:
     assert trade.size == 50  # floor(20 / 0.40)
     assert trade.status == "open"
     assert trade.fee > 0
+
+
+def test_result_carries_window_info_from_kalshi_only() -> None:
+    session = make_session()
+    client = FakeKalshiClient(
+        open_markets=[window_market("KXBTC15M-A", "0.30", "0.40", floor_strike=78000.0, close_time="2026-08-29T22:45:00Z")]
+    )
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["target_price"] == 78000.0
+    assert result["close_time"] == "2026-08-29T22:45:00Z"
+    assert result["seconds_remaining"] is not None
+    assert result["seconds_remaining"] >= 0
+    assert "btc_spot_price_usd" not in result
 
 
 def test_does_not_reenter_same_window_twice() -> None:

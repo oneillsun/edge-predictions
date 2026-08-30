@@ -88,13 +88,36 @@ def run_pipeline() -> None:
         session.close()
 
 
+def _format_btc_scalp_log(result: dict) -> str:
+    status = result.get("status")
+    ticker = result.get("ticker", "-")
+    target = result.get("target_price")
+    remaining = result.get("seconds_remaining")
+    remaining_str = f"{int(remaining)}s" if remaining is not None else "-"
+    parts = [f"[{ticker}]", f"status={status}", f"target=${target}", f"remaining={remaining_str}"]
+
+    if status == "opened":
+        parts.append(f"entry=${result['entry_price']:.2f} contracts={result['contracts']} fee=${result['fee']:.2f}")
+    elif status == "monitoring":
+        gain = result.get("gain_pct")
+        gain_str = f"{gain:+.1%}" if gain is not None else "-"
+        parts.append(f"entry=${result['entry_price']:.2f} bid=${result.get('current_bid')} gain={gain_str}")
+    elif status in ("closed_profit_target", "closed_at_settlement"):
+        parts.append(f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}")
+
+    return " ".join(parts)
+
+
 def run_btc_15min_scalp_tick() -> None:
     """Paper-simulated only — never places a real order. See app/strategies/btc_15min_scalp.py."""
     kalshi_client = build_client_from_settings(settings)
     session = SessionLocal()
     try:
         result = btc_15min_scalp.poll(kalshi_client, session)
-        logger.info("btc_15min_scalp: %s", result)
+        if result.get("status") == "no_open_market":
+            logger.info("btc_15min_scalp: no open KXBTC15M market")
+        else:
+            logger.info("btc_15min_scalp %s", _format_btc_scalp_log(result))
     except Exception:
         logger.exception("btc_15min_scalp tick failed")
     finally:

@@ -50,7 +50,8 @@ def print_status_once() -> None:
         remaining = _seconds_remaining(market.get("close_time"), dt.datetime.now(dt.timezone.utc))
         remaining_str = f"{int(remaining)}s" if remaining is not None else "-"
 
-        line = f"[{ticker}] target=${target_price} remaining={remaining_str} yes_bid=${yes_bid}"
+        yes_bid_str = f"{yes_bid:.2f}" if yes_bid is not None else "-"
+        line = f"[{ticker}] target=${target_price} remaining={remaining_str} yes_bid=${yes_bid_str}"
 
         trade = session.query(Trade).filter(Trade.source == SOURCE, Trade.status == "open").first()
         if trade is None:

@@ -101,7 +101,13 @@ def _format_btc_scalp_log(result: dict) -> str:
     elif status == "monitoring":
         gain = result.get("gain_pct")
         gain_str = f"{gain:+.1%}" if gain is not None else "-"
-        parts.append(f"entry=${result['entry_price']:.2f} bid=${result.get('current_bid')} gain={gain_str}")
+        bid = result.get("current_bid")
+        bid_str = f"{bid:.2f}" if bid is not None else "-"
+        parts.append(f"entry=${result['entry_price']:.2f} yes_bid=${bid_str} gain={gain_str}")
+    elif status == "watching":
+        bid = result.get("yes_bid")
+        bid_str = f"{bid:.2f}" if bid is not None else "-"
+        parts.append(f"yes_bid=${bid_str}")
     elif status in ("closed_profit_target", "closed_at_settlement"):
         parts.append(f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}")
 

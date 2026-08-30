@@ -34,17 +34,24 @@ def main() -> None:
     earliest = min(trade.opened_at for trade in trades)
     print(f"Since: {earliest.strftime('%m/%d/%Y %H:%M:%S')} UTC\n")
 
-    header = f"{'source':<20} {'count':>6} {'settled':>8} {'win_rate':>9} {'total_pnl':>11}"
+    header = (
+        f"{'source':<20} {'count':>6} {'settled':>8} {'wins':>6} {'losses':>7} "
+        f"{'win_rate':>9} {'total_pnl':>11}"
+    )
     print(header)
     print("-" * len(header))
 
     for source, source_trades in sorted(by_source.items()):
         settled = [t for t in source_trades if t.status == "settled"]
         wins = [t for t in settled if t.result == "win"]
+        losses = [t for t in settled if t.result == "loss"]
         win_rate = (len(wins) / len(settled) * 100) if settled else float("nan")
         total_pnl = sum(t.pnl or 0.0 for t in settled)
         win_rate_str = f"{win_rate:.1f}%" if settled else "n/a"
-        print(f"{source:<20} {len(source_trades):>6} {len(settled):>8} {win_rate_str:>9} {total_pnl:>11.2f}")
+        print(
+            f"{source:<20} {len(source_trades):>6} {len(settled):>8} {len(wins):>6} {len(losses):>7} "
+            f"{win_rate_str:>9} {total_pnl:>11.2f}"
+        )
 
 
 if __name__ == "__main__":

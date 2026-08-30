@@ -316,6 +316,59 @@ Acceptance check: with `LIVE_TRADING_ENABLED=false`, an approved decision does
 positions directly, not just app logs). Only flip the flag once you've verified
 that.
 
+# Addendum — BTC 15-min scalp strategy (paper-simulated, 2026-08-29)
+
+**Goal:** user requested a module that buys "Yes" the instant each Kalshi
+`KXBTC15M` (BTC up/down, 15-minute window) contract opens, polling every 5
+seconds, with an automatic exit at +15% gain.
+
+**This was explicitly scoped down before building.** As requested, it would
+have meant adding real order-placement to `kalshi_client.py` — a hard
+boundary CLAUDE_1.md says not to cross before Milestone 8, enforced by a
+test asserting no such method exists. It also has no signal/edge check at
+all (unconditional timed entry, not the Milestone 4 decision engine) and no
+paper track record. Per user's decision, implemented as **paper-simulated
+only** — same pattern as Milestone 5, no real order ever sent.
+
+Tasks:
+- [x] `app/strategies/btc_15min_scalp.py`: `poll()` — one tick does one of:
+      open a paper "Yes" position on a not-yet-traded window (skips
+      degenerate prices and 0-contract sizes), monitor an open position,
+      close it early once `yes_bid` implies `BTC_15MIN_PROFIT_TARGET_PCT`
+      gain over entry (paying both entry and exit taker fees via the same
+      quadratic formula from `app/engine/decision.py`), or settle against
+      Kalshi's real result if the window rolls over before the target hits.
+- [x] Scheduled via `app/scheduler.py`'s `run_btc_15min_scalp_tick`, interval
+      `BTC_15MIN_POLL_SECONDS` (default 5s — confirmed against
+      docs.kalshi.com that Basic-tier accounts get ~20 req/s on GET
+      endpoints, so 1-2 GET calls every 5s is not a rate-limit concern),
+      `max_instances=1` + `coalesce=True` so a slow tick can't stack up
+      overlapping runs.
+- [x] Console visibility: `logging.basicConfig` added to `app/main.py` (this
+      was previously missing entirely — no scheduler job's log lines, in any
+      milestone, were actually visible before this) — every 5-second tick
+      now prints its outcome to console.
+- [ ] Frontend visibility — not built. User asked for "front end or console";
+      console is done, a live dashboard view is still Milestone 6's job.
+
+Uses a separate paper-money pool (`BTC_15MIN_POSITION_SIZE_USD`, default $20
+per window) from `PAPER_BANKROLL_USD`, so this experimental strategy's
+results don't mix with the Milestone 5 `polymarket_arb`/`news_eth` track
+record — `paper_trading_report.py`'s per-source breakdown already separates
+them (`source="btc_15min_scalp"`).
+
+Verified live: ran the app for ~18s, watched it open a real paper position on
+the actual open window (`KXBTC15M-26AUG292245-45`, entry $0.42, 47 contracts)
+and correctly monitor it on the next tick (bid moved to $0.41, still below
+target). That position was left running — it's genuine output of the system,
+not demo data. Full deterministic test coverage of all branches (open,
+monitor, profit-target exit, settlement-based exit, idempotency, degenerate
+price) lives in `tests/test_btc_15min_scalp.py`.
+
+**Still fully gated from real money** by the same rule as everything else:
+no order-placement method exists in `kalshi_client.py`, and none should
+until Milestone 8 is explicitly and deliberately turned on.
+
 # Not in this plan (deliberately deferred)
 
 - The other six Apify signal modules from the ideas doc (sentiment, SERP

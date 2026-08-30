@@ -13,6 +13,7 @@ from app.engine import decision, paper_trading
 from app.kalshi_client import KalshiClient, build_client_from_settings
 from app.polymarket_client import PolymarketClient
 from app.signals import news_signal, polymarket_arb_signal
+from app.strategies import btc_15min_scalp
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +88,31 @@ def run_pipeline() -> None:
         session.close()
 
 
+def run_btc_15min_scalp_tick() -> None:
+    """Paper-simulated only — never places a real order. See app/strategies/btc_15min_scalp.py."""
+    kalshi_client = build_client_from_settings(settings)
+    session = SessionLocal()
+    try:
+        result = btc_15min_scalp.poll(kalshi_client, session)
+        logger.info("btc_15min_scalp: %s", result)
+    except Exception:
+        logger.exception("btc_15min_scalp tick failed")
+    finally:
+        kalshi_client.close()
+        session.close()
+
+
 def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler()
-    scheduler.add_job(run_pipeline, "interval", minutes=INTERVAL_MINUTES, next_run_time=dt.datetime.now())
+    now = dt.datetime.now()
+    scheduler.add_job(run_pipeline, "interval", minutes=INTERVAL_MINUTES, next_run_time=now)
+    scheduler.add_job(
+        run_btc_15min_scalp_tick,
+        "interval",
+        seconds=settings.btc_15min_poll_seconds,
+        next_run_time=now,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     return scheduler

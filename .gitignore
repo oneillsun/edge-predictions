@@ -16,6 +16,7 @@ dist/
 # Local data
 *.db
 *.sqlite3
+backend/logs/
 
 # Editor
 .vscode/

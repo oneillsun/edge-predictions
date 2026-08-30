@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import math
 from typing import Any
 
@@ -8,14 +9,17 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import Trade
+from app.db.session import SessionLocal
 from app.engine.decision import fee_for_price
-from app.kalshi_client import KalshiClient
+from app.kalshi_client import KalshiClient, build_client_from_settings
 
 SOURCE = "btc_15min_scalp"
 SERIES_TICKER = "KXBTC15M"
 
 # Same terminal-status rule as app.engine.paper_trading.settle_paper_trades.
 RESOLVED_STATUSES = {"determined", "finalized"}
+
+logger = logging.getLogger(__name__)
 
 
 def _as_float(value: Any) -> float | None:
@@ -229,3 +233,74 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
         **window_info,
         **_real_account_snapshot(kalshi_client),
     }
+
+
+def _real_account_suffix(result: dict[str, Any]) -> str:
+    cash = result.get("real_cash_usd")
+    portfolio = result.get("real_portfolio_value_usd")
+    if cash is None and portfolio is None:
+        return ""
+    cash_str = f"${cash:.2f}" if cash is not None else "-"
+    portfolio_str = f"${portfolio:.2f}" if portfolio is not None else "-"
+    return f" | real_cash={cash_str} real_portfolio={portfolio_str}"
+
+
+def format_status_line(result: dict[str, Any]) -> str:
+    """Human-readable one-line summary of a poll() result, for console logging."""
+    status = result.get("status")
+    ticker = result.get("ticker", "-")
+    target = result.get("target_price")
+    remaining = result.get("seconds_remaining")
+    remaining_str = f"{int(remaining)}s" if remaining is not None else "-"
+    parts = [f"[{ticker}]", f"status={status}", f"target=${target}", f"remaining={remaining_str}"]
+
+    if status == "opened":
+        parts.append(
+            f"entry=${result['entry_price']:.2f} contracts={result['contracts']} fee=${result['fee']:.2f}"
+            f"{_real_account_suffix(result)}"
+        )
+    elif status == "monitoring":
+        gain = result.get("gain_pct")
+        gain_str = f"{gain:+.1%}" if gain is not None else "-"
+        bid = result.get("current_bid")
+        bid_str = f"{bid:.2f}" if bid is not None else "-"
+        parts.append(f"entry=${result['entry_price']:.2f} yes_bid=${bid_str} gain={gain_str}")
+    elif status == "watching":
+        bid = result.get("yes_bid")
+        bid_str = f"{bid:.2f}" if bid is not None else "-"
+        parts.append(f"yes_bid=${bid_str}")
+    elif status == "missed_entry_window":
+        elapsed = result.get("elapsed_since_open")
+        elapsed_str = f"{int(elapsed)}s" if elapsed is not None else "-"
+        parts.append(f"elapsed_since_open={elapsed_str} (entry window closed, skipping)")
+    elif status in ("closed_profit_target", "closed_at_settlement"):
+        parts.append(
+            f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}"
+            f"{_real_account_suffix(result)}"
+        )
+
+    return " ".join(parts)
+
+
+def run_once() -> dict[str, Any]:
+    """Create a Kalshi client + DB session, poll once, log the result, clean up.
+
+    Owns its own client/session lifecycle so callers (the standalone runner
+    script, or a scheduler) don't need to. Swallows and logs exceptions
+    rather than raising, so a transient failure doesn't kill a calling loop.
+    """
+    kalshi_client = build_client_from_settings(settings)
+    session = SessionLocal()
+    try:
+        result = poll(kalshi_client, session)
+        if result.get("status") == "no_open_market":
+            logger.info("no open KXBTC15M market")
+        else:
+            logger.info(format_status_line(result))
+        return result
+    except Exception:
+        logger.exception("btc_15min_scalp tick failed")
+        return {"status": "error"}
+    finally:
+        kalshi_client.close()
+        session.close()

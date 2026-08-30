@@ -13,7 +13,6 @@ from app.engine import decision, paper_trading
 from app.kalshi_client import KalshiClient, build_client_from_settings
 from app.polymarket_client import PolymarketClient
 from app.signals import news_signal, polymarket_arb_signal
-from app.strategies import btc_15min_scalp
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +71,13 @@ def run_pipeline() -> None:
     relying on APScheduler's incidental ordering of same-tick jobs. Each
     stage catches its own exceptions and logs, so one stage failing doesn't
     block the rest of the pipeline from running.
+
+    Note: the BTC 15-min scalp strategy does NOT run here — it was pulled
+    out into its own standalone script (scripts/run_btc_15min_scalp.py) so
+    it can run in isolation, without depending on Apify/Polymarket calls or
+    this 20-minute cadence. Do not add it back here and also run the
+    standalone script at the same time — both would poll/trade
+    independently and could open duplicate positions on the same window.
     """
     kalshi_client = build_client_from_settings(settings)
     polymarket_client = PolymarketClient(base_url=settings.polymarket_api_base_url)
@@ -88,80 +94,9 @@ def run_pipeline() -> None:
         session.close()
 
 
-def _real_account_suffix(result: dict) -> str:
-    cash = result.get("real_cash_usd")
-    portfolio = result.get("real_portfolio_value_usd")
-    if cash is None and portfolio is None:
-        return ""
-    cash_str = f"${cash:.2f}" if cash is not None else "-"
-    portfolio_str = f"${portfolio:.2f}" if portfolio is not None else "-"
-    return f" | real_cash={cash_str} real_portfolio={portfolio_str}"
-
-
-def _format_btc_scalp_log(result: dict) -> str:
-    status = result.get("status")
-    ticker = result.get("ticker", "-")
-    target = result.get("target_price")
-    remaining = result.get("seconds_remaining")
-    remaining_str = f"{int(remaining)}s" if remaining is not None else "-"
-    parts = [f"[{ticker}]", f"status={status}", f"target=${target}", f"remaining={remaining_str}"]
-
-    if status == "opened":
-        parts.append(
-            f"entry=${result['entry_price']:.2f} contracts={result['contracts']} fee=${result['fee']:.2f}"
-            f"{_real_account_suffix(result)}"
-        )
-    elif status == "monitoring":
-        gain = result.get("gain_pct")
-        gain_str = f"{gain:+.1%}" if gain is not None else "-"
-        bid = result.get("current_bid")
-        bid_str = f"{bid:.2f}" if bid is not None else "-"
-        parts.append(f"entry=${result['entry_price']:.2f} yes_bid=${bid_str} gain={gain_str}")
-    elif status == "watching":
-        bid = result.get("yes_bid")
-        bid_str = f"{bid:.2f}" if bid is not None else "-"
-        parts.append(f"yes_bid=${bid_str}")
-    elif status == "missed_entry_window":
-        elapsed = result.get("elapsed_since_open")
-        elapsed_str = f"{int(elapsed)}s" if elapsed is not None else "-"
-        parts.append(f"elapsed_since_open={elapsed_str} (entry window closed, skipping)")
-    elif status in ("closed_profit_target", "closed_at_settlement"):
-        parts.append(
-            f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}"
-            f"{_real_account_suffix(result)}"
-        )
-
-    return " ".join(parts)
-
-
-def run_btc_15min_scalp_tick() -> None:
-    """Paper-simulated only — never places a real order. See app/strategies/btc_15min_scalp.py."""
-    kalshi_client = build_client_from_settings(settings)
-    session = SessionLocal()
-    try:
-        result = btc_15min_scalp.poll(kalshi_client, session)
-        if result.get("status") == "no_open_market":
-            logger.info("btc_15min_scalp: no open KXBTC15M market")
-        else:
-            logger.info("btc_15min_scalp %s", _format_btc_scalp_log(result))
-    except Exception:
-        logger.exception("btc_15min_scalp tick failed")
-    finally:
-        kalshi_client.close()
-        session.close()
-
-
 def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler()
     now = dt.datetime.now()
     scheduler.add_job(run_pipeline, "interval", minutes=INTERVAL_MINUTES, next_run_time=now)
-    scheduler.add_job(
-        run_btc_15min_scalp_tick,
-        "interval",
-        seconds=settings.btc_15min_poll_seconds,
-        next_run_time=now,
-        max_instances=1,
-        coalesce=True,
-    )
     scheduler.start()
     return scheduler

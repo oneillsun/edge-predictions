@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.config import settings
+from app.config import resolve_sqlite_url, settings
 from app.db.models import Base
 
 
@@ -11,7 +11,8 @@ def _connect_args(database_url: str) -> dict[str, object]:
     return {}
 
 
-engine = create_engine(settings.database_url, connect_args=_connect_args(settings.database_url))
+_DATABASE_URL = resolve_sqlite_url(settings.database_url)
+engine = create_engine(_DATABASE_URL, connect_args=_connect_args(_DATABASE_URL))
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

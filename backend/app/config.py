@@ -3,6 +3,22 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = REPO_ROOT / "backend"
+
+
+def resolve_sqlite_url(database_url: str) -> str:
+    """Anchor a relative sqlite:/// URL to backend/, so the database is
+    always the same file regardless of the current working directory the
+    process happened to start from (running a script from scripts/ instead
+    of backend/ would otherwise silently create a fresh, empty database).
+    """
+    prefix = "sqlite:///"
+    if not database_url.startswith(prefix):
+        return database_url
+    raw_path = Path(database_url[len(prefix) :])
+    if raw_path.is_absolute():
+        return database_url
+    return f"{prefix}{(BACKEND_ROOT / raw_path).resolve().as_posix()}"
 
 
 class Settings(BaseSettings):

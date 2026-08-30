@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.config import settings
+from app.config import resolve_sqlite_url, settings
 from app.db.models import Base
 
 # this is the Alembic Config object, which provides
@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 
 # DATABASE_URL comes from .env via app.config, not alembic.ini, so the same
 # migrations work against local sqlite and a future Postgres environment.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option("sqlalchemy.url", resolve_sqlite_url(settings.database_url))
 
 target_metadata = Base.metadata
 

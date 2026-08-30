@@ -5,6 +5,7 @@ Run from backend/: python scripts/paper_trading_report.py
 
 from collections import defaultdict
 
+from app.config import settings
 from app.db.models import Trade
 from app.db.session import SessionLocal
 
@@ -20,6 +21,10 @@ def main() -> None:
     for trade in trades:
         by_source[trade.source or "unknown"].append(trade)
 
+    print(
+        f"btc_15min_scalp settings: ${settings.btc_15min_position_size_usd:.2f}/trade, "
+        f"{settings.btc_15min_profit_target_pct:.0%} profit target"
+    )
     print(f"Total paper trades: {len(trades)}")
 
     if not trades:

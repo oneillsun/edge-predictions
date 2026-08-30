@@ -88,6 +88,16 @@ def run_pipeline() -> None:
         session.close()
 
 
+def _real_account_suffix(result: dict) -> str:
+    cash = result.get("real_cash_usd")
+    portfolio = result.get("real_portfolio_value_usd")
+    if cash is None and portfolio is None:
+        return ""
+    cash_str = f"${cash:.2f}" if cash is not None else "-"
+    portfolio_str = f"${portfolio:.2f}" if portfolio is not None else "-"
+    return f" | real_cash={cash_str} real_portfolio={portfolio_str}"
+
+
 def _format_btc_scalp_log(result: dict) -> str:
     status = result.get("status")
     ticker = result.get("ticker", "-")
@@ -97,7 +107,10 @@ def _format_btc_scalp_log(result: dict) -> str:
     parts = [f"[{ticker}]", f"status={status}", f"target=${target}", f"remaining={remaining_str}"]
 
     if status == "opened":
-        parts.append(f"entry=${result['entry_price']:.2f} contracts={result['contracts']} fee=${result['fee']:.2f}")
+        parts.append(
+            f"entry=${result['entry_price']:.2f} contracts={result['contracts']} fee=${result['fee']:.2f}"
+            f"{_real_account_suffix(result)}"
+        )
     elif status == "monitoring":
         gain = result.get("gain_pct")
         gain_str = f"{gain:+.1%}" if gain is not None else "-"
@@ -109,7 +122,10 @@ def _format_btc_scalp_log(result: dict) -> str:
         bid_str = f"{bid:.2f}" if bid is not None else "-"
         parts.append(f"yes_bid=${bid_str}")
     elif status in ("closed_profit_target", "closed_at_settlement"):
-        parts.append(f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}")
+        parts.append(
+            f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}"
+            f"{_real_account_suffix(result)}"
+        )
 
     return " ".join(parts)
 

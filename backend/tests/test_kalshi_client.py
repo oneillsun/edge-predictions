@@ -75,6 +75,16 @@ def test_get_orderbook_builds_ticker_path(private_key: rsa.RSAPrivateKey) -> Non
     assert call["params"] == {"depth": 10}
 
 
+def test_get_balance_builds_path(private_key: rsa.RSAPrivateKey) -> None:
+    client, fake_http = make_client(private_key, {"balance": 182, "balance_dollars": "1.8201", "portfolio_value": 0})
+
+    result = client.get_balance()
+
+    assert result == {"balance": 182, "balance_dollars": "1.8201", "portfolio_value": 0}
+    call = fake_http.calls[0]
+    assert call["url"] == "https://external-api.kalshi.com/trade-api/v2/portfolio/balance"
+
+
 def test_get_market_builds_ticker_path(private_key: rsa.RSAPrivateKey) -> None:
     client, fake_http = make_client(private_key, {"market": {"status": "finalized", "result": "yes"}})
 

@@ -45,6 +45,23 @@ def _already_traded(session: Session, ticker: str) -> bool:
     return session.query(Trade).filter(Trade.source == SOURCE, Trade.ticker == ticker).first() is not None
 
 
+def _real_account_snapshot(kalshi_client: KalshiClient) -> dict[str, float | None]:
+    """Real Kalshi account cash/portfolio value — display only, for context
+    alongside a paper trade's open/close. Never used in any sizing or
+    trading decision. Swallows failures rather than breaking a trading tick.
+    """
+    try:
+        balance = kalshi_client.get_balance()
+        cash = balance.get("balance_dollars")
+        portfolio_cents = balance.get("portfolio_value")
+        return {
+            "real_cash_usd": float(cash) if cash is not None else None,
+            "real_portfolio_value_usd": (portfolio_cents / 100.0) if portfolio_cents is not None else None,
+        }
+    except Exception:
+        return {"real_cash_usd": None, "real_portfolio_value_usd": None}
+
+
 def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     """One poll tick: maybe enter a new window, maybe exit on profit target, maybe
     settle a rolled-over window against Kalshi's real result.
@@ -58,7 +75,11 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
 
     Every returned dict carries target_price, close_time, and
     seconds_remaining for the *current* window — all read directly off
-    Kalshi's own market data, no other data source involved.
+    Kalshi's own market data, no other data source involved. The "opened"
+    and "closed_*" results also carry real_cash_usd/real_portfolio_value_usd
+    — your actual Kalshi account balance at that moment, for context only
+    (never used in sizing or any trading decision — this strategy is still
+    paper-simulated only).
 
     Returns a small dict describing what happened this tick, for logging.
     """
@@ -102,6 +123,7 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
                 "result": trade.result,
                 "pnl": trade.pnl,
                 **window_info,
+                **_real_account_snapshot(kalshi_client),
             }
         return {"status": "waiting_for_settlement", "ticker": trade.ticker, **window_info}
 
@@ -134,6 +156,7 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
                 "gain_pct": gain_pct,
                 "pnl": trade.pnl,
                 **window_info,
+                **_real_account_snapshot(kalshi_client),
             }
 
         return {
@@ -172,4 +195,12 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
         )
     )
     session.commit()
-    return {"status": "opened", "ticker": ticker, "entry_price": yes_ask, "contracts": contracts, "fee": entry_fee, **window_info}
+    return {
+        "status": "opened",
+        "ticker": ticker,
+        "entry_price": yes_ask,
+        "contracts": contracts,
+        "fee": entry_fee,
+        **window_info,
+        **_real_account_snapshot(kalshi_client),
+    }

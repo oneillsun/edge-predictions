@@ -92,6 +92,9 @@ class KalshiClient:
     def get_market(self, ticker: str) -> dict[str, Any]:
         return self._get(f"/markets/{ticker}")
 
+    def get_balance(self) -> dict[str, Any]:
+        return self._get("/portfolio/balance")
+
     def close(self) -> None:
         self._http.close()
 

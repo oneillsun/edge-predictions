@@ -24,10 +24,12 @@ class FakeKalshiClient:
         open_markets: list[dict[str, Any]] | None = None,
         markets_by_ticker: dict[str, dict[str, Any]] | None = None,
         fee_multiplier: float = 1.0,
+        balance: dict[str, Any] | None = None,
     ) -> None:
         self._open_markets = open_markets or []
         self._markets_by_ticker = markets_by_ticker or {}
         self._fee_multiplier = fee_multiplier
+        self._balance = balance if balance is not None else {"balance_dollars": "1.82", "portfolio_value": 0}
 
     def get_markets(self, **kwargs: Any) -> dict[str, Any]:
         return {"markets": self._open_markets}
@@ -37,6 +39,9 @@ class FakeKalshiClient:
 
     def get_series(self, series_ticker: str) -> dict[str, Any]:
         return {"series": {"fee_multiplier": self._fee_multiplier, "fee_type": "quadratic"}}
+
+    def get_balance(self) -> dict[str, Any]:
+        return self._balance
 
 
 def window_market(
@@ -85,6 +90,8 @@ def test_opens_position_on_new_window() -> None:
     assert trade.size == 50  # floor(20 / 0.40)
     assert trade.status == "open"
     assert trade.fee > 0
+    assert result["real_cash_usd"] == 1.82
+    assert result["real_portfolio_value_usd"] == 0.0
 
 
 def test_result_carries_window_info_from_kalshi_only() -> None:
@@ -167,6 +174,8 @@ def test_closes_on_profit_target_hit() -> None:
     assert trade.result == "win"
     # payout 50*0.47=23.5, cost 50*0.40=20, entry fee 1.0, exit fee = fee_for_price(0.47,1.0)*50 = 0.02*50 = 1.0
     assert trade.pnl == pytest.approx(23.5 - 20.0 - 1.0 - 1.0)
+    assert result["real_cash_usd"] == 1.82
+    assert result["real_portfolio_value_usd"] == 0.0
 
 
 def test_waits_for_settlement_when_window_rolls_over_unresolved() -> None:
@@ -212,6 +221,7 @@ def test_settles_at_real_result_when_target_never_hit_and_won() -> None:
     assert trade.result == "win"
     # payout 50*1=50, cost 20, fee 1 -> pnl 29
     assert trade.pnl == pytest.approx(29.0)
+    assert result["real_cash_usd"] == 1.82
 
 
 def test_settles_at_real_result_when_target_never_hit_and_lost() -> None:
@@ -235,3 +245,19 @@ def test_settles_at_real_result_when_target_never_hit_and_lost() -> None:
     assert trade.result == "loss"
     # payout 0, cost 20, fee 1 -> pnl -21
     assert trade.pnl == pytest.approx(-21.0)
+
+
+def test_opens_position_even_if_balance_fetch_fails() -> None:
+    class BrokenBalanceClient(FakeKalshiClient):
+        def get_balance(self) -> dict[str, Any]:
+            raise RuntimeError("network error")
+
+    session = make_session()
+    client = BrokenBalanceClient(open_markets=[window_market("KXBTC15M-A", "0.30", "0.40")])
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "opened"
+    assert result["real_cash_usd"] is None
+    assert result["real_portfolio_value_usd"] is None
+    assert session.query(Trade).count() == 1

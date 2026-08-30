@@ -70,6 +70,8 @@ def iso(delta: dt.timedelta) -> str:
 def fixed_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "btc_15min_position_size_usd", 20.0)
     monkeypatch.setattr(settings, "btc_15min_profit_target_pct", 0.15)
+    monkeypatch.setattr(settings, "btc_15min_min_entry_price", 0.40)
+    monkeypatch.setattr(settings, "btc_15min_max_entry_price", 0.60)
 
 
 def test_no_open_market_returns_status() -> None:
@@ -139,6 +141,36 @@ def test_skips_entry_when_price_degenerate() -> None:
 
     assert result["status"] == "watching"
     assert session.query(Trade).count() == 0
+
+
+def test_skips_entry_when_price_below_range() -> None:
+    session = make_session()
+    client = FakeKalshiClient(open_markets=[window_market("KXBTC15M-A", "0.30", "0.35")])
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "price_out_of_range"
+    assert session.query(Trade).count() == 0
+
+
+def test_skips_entry_when_price_above_range() -> None:
+    session = make_session()
+    client = FakeKalshiClient(open_markets=[window_market("KXBTC15M-A", "0.65", "0.70")])
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "price_out_of_range"
+    assert session.query(Trade).count() == 0
+
+
+def test_enters_at_price_range_boundaries() -> None:
+    session = make_session()
+    client = FakeKalshiClient(open_markets=[window_market("KXBTC15M-A", "0.55", "0.60")])
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "opened"
+    assert session.query(Trade).count() == 1
 
 
 def test_enters_when_within_entry_window() -> None:

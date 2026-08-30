@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     btc_15min_profit_target_pct: float = 0.15
     btc_15min_poll_seconds: float = 5.0
     btc_15min_entry_window_seconds: float = 60.0
+    btc_15min_min_entry_price: float = 0.40
+    btc_15min_max_entry_price: float = 0.60
 
 
 settings = Settings()

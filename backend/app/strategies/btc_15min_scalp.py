@@ -86,7 +86,9 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     BTC_15MIN_ENTRY_WINDOW_SECONDS have passed since the window opened
     before we notice it (e.g. after a restart, or a slow tick), the entry is
     skipped entirely rather than chasing a stale window — it waits for the
-    next one.
+    next one. Also skips entering if yes_ask falls outside
+    [BTC_15MIN_MIN_ENTRY_PRICE, BTC_15MIN_MAX_ENTRY_PRICE] — avoids
+    near-certain or illiquid extreme-priced contracts.
 
     Every returned dict carries target_price, close_time, and
     seconds_remaining for the *current* window — all read directly off
@@ -204,6 +206,15 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     if yes_ask is None or not (0 < yes_ask < 1):
         return {"status": "watching", "ticker": ticker, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
 
+    if not (settings.btc_15min_min_entry_price <= yes_ask <= settings.btc_15min_max_entry_price):
+        return {
+            "status": "price_out_of_range",
+            "ticker": ticker,
+            "yes_bid": yes_bid,
+            "yes_ask": yes_ask,
+            **window_info,
+        }
+
     contracts = math.floor(settings.btc_15min_position_size_usd / yes_ask)
     if contracts < 1:
         return {"status": "watching", "ticker": ticker, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
@@ -273,6 +284,10 @@ def format_status_line(result: dict[str, Any]) -> str:
         elapsed = result.get("elapsed_since_open")
         elapsed_str = f"{int(elapsed)}s" if elapsed is not None else "-"
         parts.append(f"elapsed_since_open={elapsed_str} (entry window closed, skipping)")
+    elif status == "price_out_of_range":
+        ask = result.get("yes_ask")
+        ask_str = f"{ask:.2f}" if ask is not None else "-"
+        parts.append(f"yes_ask=${ask_str} (outside entry price range, skipping)")
     elif status in ("closed_profit_target", "closed_at_settlement"):
         parts.append(
             f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}"

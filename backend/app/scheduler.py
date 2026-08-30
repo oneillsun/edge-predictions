@@ -121,6 +121,10 @@ def _format_btc_scalp_log(result: dict) -> str:
         bid = result.get("yes_bid")
         bid_str = f"{bid:.2f}" if bid is not None else "-"
         parts.append(f"yes_bid=${bid_str}")
+    elif status == "missed_entry_window":
+        elapsed = result.get("elapsed_since_open")
+        elapsed_str = f"{int(elapsed)}s" if elapsed is not None else "-"
+        parts.append(f"elapsed_since_open={elapsed_str} (entry window closed, skipping)")
     elif status in ("closed_profit_target", "closed_at_settlement"):
         parts.append(
             f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}"

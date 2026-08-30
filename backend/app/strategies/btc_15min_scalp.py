@@ -31,6 +31,13 @@ def _seconds_remaining(close_time_raw: str | None, now: dt.datetime) -> float | 
     return max((close_time - now).total_seconds(), 0.0)
 
 
+def _seconds_since_open(open_time_raw: str | None, now: dt.datetime) -> float | None:
+    if not open_time_raw:
+        return None
+    open_time = dt.datetime.fromisoformat(open_time_raw.replace("Z", "+00:00"))
+    return max((now - open_time).total_seconds(), 0.0)
+
+
 def _current_window_market(kalshi_client: KalshiClient) -> dict[str, Any] | None:
     response = kalshi_client.get_markets(limit=5, status="open", series_ticker=SERIES_TICKER)
     markets = response.get("markets", [])
@@ -71,7 +78,11 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     (no edge/signal check — this is a timed-entry strategy, not the
     Milestone 4 decision engine), then closes early once the current yes_bid
     implies a BTC_15MIN_PROFIT_TARGET_PCT gain over the entry price, or at
-    real settlement if the target is never hit.
+    real settlement if the target is never hit. If more than
+    BTC_15MIN_ENTRY_WINDOW_SECONDS have passed since the window opened
+    before we notice it (e.g. after a restart, or a slow tick), the entry is
+    skipped entirely rather than chasing a stale window — it waits for the
+    next one.
 
     Every returned dict carries target_price, close_time, and
     seconds_remaining for the *current* window — all read directly off
@@ -171,6 +182,20 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     # No open position: enter this window if we haven't already traded it.
     if _already_traded(session, ticker):
         return {"status": "watching", "ticker": ticker, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
+
+    elapsed_since_open = _seconds_since_open(market.get("open_time"), now)
+    if elapsed_since_open is not None and elapsed_since_open > settings.btc_15min_entry_window_seconds:
+        # We're too late into this window to call it a "start of window"
+        # entry anymore — skip it rather than chasing a stale entry, and
+        # wait for the next window.
+        return {
+            "status": "missed_entry_window",
+            "ticker": ticker,
+            "yes_bid": yes_bid,
+            "yes_ask": yes_ask,
+            "elapsed_since_open": elapsed_since_open,
+            **window_info,
+        }
 
     if yes_ask is None or not (0 < yes_ask < 1):
         return {"status": "watching", "ticker": ticker, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}

@@ -50,6 +50,7 @@ def window_market(
     yes_ask: str,
     floor_strike: float = 78000.0,
     close_time: str = "2026-08-29T22:45:00Z",
+    open_time: str | None = None,
 ) -> dict[str, Any]:
     return {
         "ticker": ticker,
@@ -57,7 +58,12 @@ def window_market(
         "yes_ask_dollars": yes_ask,
         "floor_strike": floor_strike,
         "close_time": close_time,
+        "open_time": open_time,
     }
+
+
+def iso(delta: dt.timedelta) -> str:
+    return (dt.datetime.now(dt.timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @pytest.fixture(autouse=True)
@@ -132,6 +138,31 @@ def test_skips_entry_when_price_degenerate() -> None:
     result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
 
     assert result["status"] == "watching"
+    assert session.query(Trade).count() == 0
+
+
+def test_enters_when_within_entry_window() -> None:
+    session = make_session()
+    client = FakeKalshiClient(
+        open_markets=[window_market("KXBTC15M-A", "0.30", "0.40", open_time=iso(-dt.timedelta(seconds=10)))]
+    )
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "opened"
+    assert session.query(Trade).count() == 1
+
+
+def test_skips_entry_after_entry_window_elapsed() -> None:
+    session = make_session()
+    client = FakeKalshiClient(
+        open_markets=[window_market("KXBTC15M-A", "0.30", "0.40", open_time=iso(-dt.timedelta(seconds=90)))]
+    )
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "missed_entry_window"
+    assert result["elapsed_since_open"] == pytest.approx(90, abs=2)
     assert session.query(Trade).count() == 0
 
 

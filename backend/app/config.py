@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     btc_15min_position_size_usd: float = 20.0
     btc_15min_profit_target_pct: float = 0.15
     btc_15min_poll_seconds: float = 5.0
+    btc_15min_entry_window_seconds: float = 60.0
 
 
 settings = Settings()

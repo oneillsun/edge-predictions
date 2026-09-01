@@ -51,11 +51,15 @@ def window_market(
     floor_strike: float = 78000.0,
     close_time: str = "2026-08-29T22:45:00Z",
     open_time: str | None = None,
+    no_bid: str | None = None,
+    no_ask: str | None = None,
 ) -> dict[str, Any]:
     return {
         "ticker": ticker,
         "yes_bid_dollars": yes_bid,
         "yes_ask_dollars": yes_ask,
+        "no_bid_dollars": no_bid,
+        "no_ask_dollars": no_ask,
         "floor_strike": floor_strike,
         "close_time": close_time,
         "open_time": open_time,
@@ -308,6 +312,79 @@ def test_settles_at_real_result_when_target_never_hit_and_lost() -> None:
     assert trade.result == "loss"
     # payout 0, cost 20, fee 1 -> pnl -21
     assert trade.pnl == pytest.approx(-21.0)
+
+
+def _add_settled_trade(session, side: str, result: str, ticker: str = "KXBTC15M-PREV") -> None:
+    session.add(
+        Trade(
+            ticker=ticker, source="btc_15min_scalp", side=side, entry_price=0.5, size=10, fee=0.1,
+            status="settled", result=result, pnl=1.0 if result == "win" else -1.0,
+            opened_at=dt.datetime.now(dt.timezone.utc), settled_at=dt.datetime.now(dt.timezone.utc),
+        )
+    )
+    session.commit()
+
+
+def test_next_side_defaults_to_yes_with_no_history() -> None:
+    session = make_session()
+    assert btc_15min_scalp.next_side(session) == "yes"
+
+
+def test_next_side_flips_after_a_win() -> None:
+    session = make_session()
+    _add_settled_trade(session, side="yes", result="win")
+    assert btc_15min_scalp.next_side(session) == "no"
+
+    session2 = make_session()
+    _add_settled_trade(session2, side="no", result="win")
+    assert btc_15min_scalp.next_side(session2) == "yes"
+
+
+def test_next_side_repeats_after_a_loss() -> None:
+    session = make_session()
+    _add_settled_trade(session, side="yes", result="loss")
+    assert btc_15min_scalp.next_side(session) == "yes"
+
+    session2 = make_session()
+    _add_settled_trade(session2, side="no", result="loss")
+    assert btc_15min_scalp.next_side(session2) == "no"
+
+
+def test_enters_no_side_after_a_yes_win() -> None:
+    session = make_session()
+    _add_settled_trade(session, side="yes", result="win")
+    # no_ask 0.50 is within the entry price range
+    client = FakeKalshiClient(
+        open_markets=[window_market("KXBTC15M-NEXT", "0.30", "0.70", no_bid="0.40", no_ask="0.50")]
+    )
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "opened"
+    assert result["side"] == "no"
+    trade = session.query(Trade).filter(Trade.ticker == "KXBTC15M-NEXT").one()
+    assert trade.side == "no"
+    assert trade.entry_price == 0.50
+
+
+def test_monitors_no_side_position_using_no_bid() -> None:
+    session = make_session()
+    session.add(
+        Trade(
+            ticker="KXBTC15M-A", source="btc_15min_scalp", side="no", entry_price=0.40, size=50, fee=1.0,
+            status="open", opened_at=dt.datetime.now(dt.timezone.utc),
+        )
+    )
+    session.commit()
+    # no_bid 0.53 -> 32.5% gain on the "no" side, clears the 15% target
+    client = FakeKalshiClient(open_markets=[window_market("KXBTC15M-A", "0.46", "0.47", no_bid="0.53", no_ask="0.54")])
+
+    result = btc_15min_scalp.poll(client, session)  # type: ignore[arg-type]
+
+    assert result["status"] == "closed_profit_target"
+    assert result["side"] == "no"
+    trade = session.query(Trade).one()
+    assert trade.result == "win"
 
 
 def test_opens_position_even_if_balance_fetch_fails() -> None:

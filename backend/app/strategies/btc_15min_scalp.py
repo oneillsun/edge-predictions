@@ -56,6 +56,30 @@ def _already_traded(session: Session, ticker: str) -> bool:
     return session.query(Trade).filter(Trade.source == SOURCE, Trade.ticker == ticker).first() is not None
 
 
+def _last_settled_trade(session: Session) -> Trade | None:
+    return (
+        session.query(Trade)
+        .filter(Trade.source == SOURCE, Trade.status == "settled")
+        .order_by(Trade.settled_at.desc())
+        .first()
+    )
+
+
+def next_side(session: Session) -> str:
+    """Which side ("yes"/"no") the next entry should take.
+
+    Starts with "yes". After a win, alternates side. After a loss, repeats
+    the same side. Based on the most recently *settled* trade — an open
+    trade in flight doesn't affect this.
+    """
+    last = _last_settled_trade(session)
+    if last is None:
+        return "yes"
+    if last.result == "win":
+        return "no" if last.side == "yes" else "yes"
+    return last.side
+
+
 def _real_account_snapshot(kalshi_client: KalshiClient) -> dict[str, float | None]:
     """Real Kalshi account cash/portfolio value — display only, for context
     alongside a paper trade's open/close. Never used in any sizing or
@@ -78,17 +102,22 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     settle a rolled-over window against Kalshi's real result.
 
     Paper-simulated only — never calls an order-placement endpoint. Buys
-    "Yes" unconditionally at the start of a window it hasn't already traded
-    (no edge/signal check — this is a timed-entry strategy, not the
-    Milestone 4 decision engine), then closes early once the current yes_bid
-    implies a BTC_15MIN_PROFIT_TARGET_PCT gain over the entry price, or at
-    real settlement if the target is never hit. If more than
-    BTC_15MIN_ENTRY_WINDOW_SECONDS have passed since the window opened
-    before we notice it (e.g. after a restart, or a slow tick), the entry is
-    skipped entirely rather than chasing a stale window — it waits for the
-    next one. Also skips entering if yes_ask falls outside
-    [BTC_15MIN_MIN_ENTRY_PRICE, BTC_15MIN_MAX_ENTRY_PRICE] — avoids
-    near-certain or illiquid extreme-priced contracts.
+    into a window it hasn't already traded (no edge/signal check — this is
+    a timed-entry strategy, not the Milestone 4 decision engine), then
+    closes early once the current bid implies a BTC_15MIN_PROFIT_TARGET_PCT
+    gain over the entry price, or at real settlement if the target is never
+    hit.
+
+    Side selection (see next_side()): starts "yes"; after a win, the next
+    entry flips to the other side; after a loss, it repeats the same side.
+
+    If more than BTC_15MIN_ENTRY_WINDOW_SECONDS have passed since the
+    window opened before we notice it (e.g. after a restart, or a slow
+    tick), the entry is skipped entirely rather than chasing a stale
+    window — it waits for the next one. Also skips entering if the chosen
+    side's ask price falls outside [BTC_15MIN_MIN_ENTRY_PRICE,
+    BTC_15MIN_MAX_ENTRY_PRICE] — avoids near-certain or illiquid
+    extreme-priced contracts.
 
     Every returned dict carries target_price, close_time, and
     seconds_remaining for the *current* window — all read directly off
@@ -107,6 +136,8 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     ticker = market["ticker"]
     yes_bid = _as_float(market.get("yes_bid_dollars"))
     yes_ask = _as_float(market.get("yes_ask_dollars"))
+    no_bid = _as_float(market.get("no_bid_dollars"))
+    no_ask = _as_float(market.get("no_ask_dollars"))
     target_price = market.get("floor_strike")
     close_time = market.get("close_time")
     now = dt.datetime.now(dt.timezone.utc)
@@ -137,28 +168,31 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
             return {
                 "status": "closed_at_settlement",
                 "ticker": trade.ticker,
+                "side": trade.side,
                 "result": trade.result,
                 "pnl": trade.pnl,
                 **window_info,
                 **_real_account_snapshot(kalshi_client),
             }
-        return {"status": "waiting_for_settlement", "ticker": trade.ticker, **window_info}
+        return {"status": "waiting_for_settlement", "ticker": trade.ticker, "side": trade.side, **window_info}
 
     if trade is not None and trade.ticker == ticker:
-        if yes_bid is None or trade.entry_price <= 0:
+        current_bid = yes_bid if trade.side == "yes" else no_bid
+        if current_bid is None or trade.entry_price <= 0:
             return {
                 "status": "monitoring",
                 "ticker": ticker,
+                "side": trade.side,
                 "entry_price": trade.entry_price,
-                "current_bid": yes_bid,
+                "current_bid": current_bid,
                 **window_info,
             }
 
-        gain_pct = (yes_bid - trade.entry_price) / trade.entry_price
+        gain_pct = (current_bid - trade.entry_price) / trade.entry_price
         if gain_pct >= settings.btc_15min_profit_target_pct:
             fee_multiplier = float(kalshi_client.get_series(SERIES_TICKER).get("series", {}).get("fee_multiplier", 1))
-            exit_fee = fee_for_price(yes_bid, fee_multiplier) * trade.size
-            payout = trade.size * yes_bid
+            exit_fee = fee_for_price(current_bid, fee_multiplier) * trade.size
+            payout = trade.size * current_bid
             cost = trade.size * trade.entry_price
             trade.status = "settled"
             trade.result = "win"
@@ -168,8 +202,9 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
             return {
                 "status": "closed_profit_target",
                 "ticker": ticker,
+                "side": trade.side,
                 "entry_price": trade.entry_price,
-                "exit_price": yes_bid,
+                "exit_price": current_bid,
                 "gain_pct": gain_pct,
                 "pnl": trade.pnl,
                 **window_info,
@@ -179,8 +214,9 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
         return {
             "status": "monitoring",
             "ticker": ticker,
+            "side": trade.side,
             "entry_price": trade.entry_price,
-            "current_bid": yes_bid,
+            "current_bid": current_bid,
             "gain_pct": gain_pct,
             **window_info,
         }
@@ -203,31 +239,34 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
             **window_info,
         }
 
-    if yes_ask is None or not (0 < yes_ask < 1):
-        return {"status": "watching", "ticker": ticker, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
+    side = next_side(session)
+    entry_ask = yes_ask if side == "yes" else no_ask
 
-    if not (settings.btc_15min_min_entry_price <= yes_ask <= settings.btc_15min_max_entry_price):
+    if entry_ask is None or not (0 < entry_ask < 1):
+        return {"status": "watching", "ticker": ticker, "side": side, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
+
+    if not (settings.btc_15min_min_entry_price <= entry_ask <= settings.btc_15min_max_entry_price):
         return {
             "status": "price_out_of_range",
             "ticker": ticker,
-            "yes_bid": yes_bid,
-            "yes_ask": yes_ask,
+            "side": side,
+            "ask": entry_ask,
             **window_info,
         }
 
-    contracts = math.floor(settings.btc_15min_position_size_usd / yes_ask)
+    contracts = math.floor(settings.btc_15min_position_size_usd / entry_ask)
     if contracts < 1:
-        return {"status": "watching", "ticker": ticker, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
+        return {"status": "watching", "ticker": ticker, "side": side, "yes_bid": yes_bid, "yes_ask": yes_ask, **window_info}
 
     fee_multiplier = float(kalshi_client.get_series(SERIES_TICKER).get("series", {}).get("fee_multiplier", 1))
-    entry_fee = fee_for_price(yes_ask, fee_multiplier) * contracts
+    entry_fee = fee_for_price(entry_ask, fee_multiplier) * contracts
 
     session.add(
         Trade(
             ticker=ticker,
             source=SOURCE,
-            side="yes",
-            entry_price=yes_ask,
+            side=side,
+            entry_price=entry_ask,
             size=contracts,
             fee=entry_fee,
             status="open",
@@ -238,7 +277,8 @@ def poll(kalshi_client: KalshiClient, session: Session) -> dict[str, Any]:
     return {
         "status": "opened",
         "ticker": ticker,
-        "entry_price": yes_ask,
+        "side": side,
+        "entry_price": entry_ask,
         "contracts": contracts,
         "fee": entry_fee,
         **window_info,
@@ -263,7 +303,9 @@ def format_status_line(result: dict[str, Any]) -> str:
     target = result.get("target_price")
     remaining = result.get("seconds_remaining")
     remaining_str = f"{int(remaining)}s" if remaining is not None else "-"
-    parts = [f"[{ticker}]", f"status={status}", f"target=${target}", f"remaining={remaining_str}"]
+    side = result.get("side")
+    side_str = f" side={side}" if side is not None else ""
+    parts = [f"[{ticker}]", f"status={status}", f"target=${target}", f"remaining={remaining_str}{side_str}"]
 
     if status == "opened":
         parts.append(
@@ -275,7 +317,7 @@ def format_status_line(result: dict[str, Any]) -> str:
         gain_str = f"{gain:+.1%}" if gain is not None else "-"
         bid = result.get("current_bid")
         bid_str = f"{bid:.2f}" if bid is not None else "-"
-        parts.append(f"entry=${result['entry_price']:.2f} yes_bid=${bid_str} gain={gain_str}")
+        parts.append(f"entry=${result['entry_price']:.2f} bid=${bid_str} gain={gain_str}")
     elif status == "watching":
         bid = result.get("yes_bid")
         bid_str = f"{bid:.2f}" if bid is not None else "-"
@@ -285,9 +327,9 @@ def format_status_line(result: dict[str, Any]) -> str:
         elapsed_str = f"{int(elapsed)}s" if elapsed is not None else "-"
         parts.append(f"elapsed_since_open={elapsed_str} (entry window closed, skipping)")
     elif status == "price_out_of_range":
-        ask = result.get("yes_ask")
+        ask = result.get("ask")
         ask_str = f"{ask:.2f}" if ask is not None else "-"
-        parts.append(f"yes_ask=${ask_str} (outside entry price range, skipping)")
+        parts.append(f"ask=${ask_str} (outside entry price range, skipping)")
     elif status in ("closed_profit_target", "closed_at_settlement"):
         parts.append(
             f"result={result.get('result', 'target_hit')} pnl=${result.get('pnl'):.2f}"
